@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  cmo-app:
+    build: .
+    container_name: cmo-staging
+    ports:
+      - "3456:3456"
+    environment:
+      - NODE_ENV=production
+      - PORT=3456
+    volumes:
+      - ./server/cmo.db:/app/server/cmo.db
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3456/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  default:
+    name: figmints-staging
