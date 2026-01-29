@@ -1,5 +1,4 @@
 {
-  "version": 2,
   "builds": [
     {
       "src": "client/package.json",
@@ -7,23 +6,15 @@
       "config": {
         "distDir": "dist"
       }
-    },
-    {
-      "src": "api/index.js",
-      "use": "@vercel/node"
     }
   ],
   "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/index.js"
-    },
     {
       "handle": "filesystem"
     },
     {
       "src": "/(.*)",
-      "dest": "/client/dist/index.html"
+      "dest": "/index.html"
     }
   ]
 }
