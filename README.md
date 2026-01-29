@@ -226,4 +226,4 @@ For questions or support, contact the FIGMINTS development team.
 
 ---
 
-Built with ❤️ for FIGMINTS by the internal development team.
+Built with ❤️ for FIGMINTS by the internal development team.# Fixed deployment author
