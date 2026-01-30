@@ -114,3 +114,5 @@ config/local.js
 # Backup files
 *.bak
 *.backup
+.vercel
+.env*.local
