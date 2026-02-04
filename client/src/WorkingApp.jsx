@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-quer
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { SunIcon, MoonIcon, UsersIcon, CalendarIcon, CheckCircleIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { API_BASE_URL } from './config/api';
 import './App.css';
 
 const queryClient = new QueryClient({
@@ -15,7 +16,7 @@ const queryClient = new QueryClient({
 
 // API Functions
 const fetchClients = async () => {
-  const response = await fetch('http://localhost:3456/api/clients');
+  const response = await fetch(`${API_BASE_URL}/api/clients`);
   if (!response.ok) throw new Error('Failed to fetch clients');
   return response.json();
 };

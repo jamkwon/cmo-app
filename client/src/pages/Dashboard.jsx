@@ -8,9 +8,10 @@ import {
   ClockIcon,
   ArrowRightIcon
 } from '@heroicons/react/24/outline';
+import { API_BASE_URL } from '../config/api';
 
 const fetchClients = async () => {
-  const response = await fetch('http://localhost:3456/api/clients');
+  const response = await fetch(`${API_BASE_URL}/api/clients`);
   if (!response.ok) throw new Error('Failed to fetch clients');
   return response.json();
 };
@@ -21,7 +22,7 @@ const fetchRecentMeetings = async () => {
   const allMeetings = [];
   
   for (const client of clients) {
-    const response = await fetch(`http://localhost:3456/api/clients/${client.id}/meetings`);
+    const response = await fetch(`${API_BASE_URL}/api/clients/${client.id}/meetings`);
     if (response.ok) {
       const meetings = await response.json();
       allMeetings.push(...meetings.map(meeting => ({ ...meeting, clientName: client.name })));
@@ -36,7 +37,7 @@ const fetchTodos = async () => {
   const allTodos = [];
   
   for (const client of clients) {
-    const response = await fetch(`http://localhost:3456/api/clients/${client.id}/todos`);
+    const response = await fetch(`${API_BASE_URL}/api/clients/${client.id}/todos`);
     if (response.ok) {
       const todos = await response.json();
       allTodos.push(...todos.map(todo => ({ ...todo, clientName: client.name })));

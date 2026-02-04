@@ -8,6 +8,7 @@ import {
   Cog6ToothIcon
 } from '@heroicons/react/24/outline';
 import { useQuery } from '@tanstack/react-query';
+import { API_BASE_URL } from '../../config/api';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: HomeIcon },
@@ -19,7 +20,7 @@ const navigation = [
 ];
 
 const fetchClients = async () => {
-  const response = await fetch('http://localhost:3456/api/clients');
+  const response = await fetch(`${API_BASE_URL}/api/clients`);
   if (!response.ok) {
     throw new Error('Failed to fetch clients');
   }

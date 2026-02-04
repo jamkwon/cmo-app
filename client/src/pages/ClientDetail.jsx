@@ -12,27 +12,28 @@ import {
   UserIcon,
   BuildingOfficeIcon
 } from '@heroicons/react/24/outline';
+import { API_BASE_URL } from '../config/api';
 
 const fetchClient = async (clientId) => {
-  const response = await fetch(`http://localhost:3456/api/clients/${clientId}`);
+  const response = await fetch(`${API_BASE_URL}/api/clients/${clientId}`);
   if (!response.ok) throw new Error('Failed to fetch client');
   return response.json();
 };
 
 const fetchClientMeetings = async (clientId) => {
-  const response = await fetch(`http://localhost:3456/api/clients/${clientId}/meetings`);
+  const response = await fetch(`${API_BASE_URL}/api/clients/${clientId}/meetings`);
   if (!response.ok) throw new Error('Failed to fetch meetings');
   return response.json();
 };
 
 const fetchClientTodos = async (clientId) => {
-  const response = await fetch(`http://localhost:3456/api/clients/${clientId}/todos`);
+  const response = await fetch(`${API_BASE_URL}/api/clients/${clientId}/todos`);
   if (!response.ok) throw new Error('Failed to fetch todos');
   return response.json();
 };
 
 const fetchScorecardItems = async (clientId) => {
-  const response = await fetch(`http://localhost:3456/api/clients/${clientId}/scorecard-items`);
+  const response = await fetch(`${API_BASE_URL}/api/clients/${clientId}/scorecard-items`);
   if (!response.ok) throw new Error('Failed to fetch scorecard items');
   return response.json();
 };

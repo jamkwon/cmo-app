@@ -16,15 +16,16 @@ import {
 } from '@heroicons/react/24/outline';
 import TodoManager from '../components/meeting/TodoManager';
 import ScorecardManager from '../components/meeting/ScorecardManager';
+import { API_BASE_URL } from '../config/api';
 
 const fetchMeeting = async (meetingId) => {
-  const response = await fetch(`http://localhost:3456/api/meetings/${meetingId}`);
+  const response = await fetch(`${API_BASE_URL}/api/meetings/${meetingId}`);
   if (!response.ok) throw new Error('Failed to fetch meeting');
   return response.json();
 };
 
 const fetchClient = async (clientId) => {
-  const response = await fetch(`http://localhost:3456/api/clients/${clientId}`);
+  const response = await fetch(`${API_BASE_URL}/api/clients/${clientId}`);
   if (!response.ok) throw new Error('Failed to fetch client');
   return response.json();
 };
