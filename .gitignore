@@ -116,3 +116,4 @@ config/local.js
 *.backup
 .vercel
 .env*.local
+# Force deployment sync Thu Feb  5 14:53:56 EST 2026
