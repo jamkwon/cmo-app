@@ -4,7 +4,8 @@
   "description": "Client Meeting Organizer - Full-stack application for FIGMINTS",
   "scripts": {
     "build": "npm run build:cloudflare",
-    "build:client": "npm run build --prefix client",
+    "build:render": "npm run install:all && npm run build:client",
+    "build:client": "cd client && npm install && npm run build",
     "build:cloudflare": "cd client && npm install && npm run build && cd .. && cp -r client/dist/* . && mkdir -p dist && cp _routes.json dist/ || true",
     "start": "npm start --prefix server",
     "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
