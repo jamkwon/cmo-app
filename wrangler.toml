@@ -2,6 +2,7 @@
 name = "cmo-app"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "."
 
 # Pages configuration
 [env.production]
@@ -28,10 +29,4 @@ binding = "DB"
 database_name = "cmo-app-db-preview"
 database_id = "placeholder-preview-database-id"
 
-# Build configuration
-[build]
-command = "npm run build"
-cwd = "."
-
-[build.upload]
-format = "modules"
+# Build configuration removed for Pages compatibility
