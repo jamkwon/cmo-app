@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChartBarIcon, TrendingUpIcon, TrendingDownIcon, MinusIcon } from '@heroicons/react/24/outline';
+import { ChartBarIcon, ArrowUpIcon, ArrowDownIcon, MinusIcon } from '@heroicons/react/24/outline';
 import { API_BASE_URL } from '../../config/api';
 
 const fetchScorecardItems = async (clientId) => {
@@ -44,7 +44,7 @@ const ScorecardMetric = ({ item, onUpdate }) => {
     neutral: 'No Target'
   };
 
-  const TrendIcon = trend === 'up' ? TrendingUpIcon : trend === 'down' ? TrendingDownIcon : MinusIcon;
+  const TrendIcon = trend === 'up' ? ArrowUpIcon : trend === 'down' ? ArrowDownIcon : MinusIcon;
   const trendColor = trend === 'up' ? 'text-green-500' : trend === 'down' ? 'text-red-500' : 'text-gray-400';
 
   const handleSave = () => {

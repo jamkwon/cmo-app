@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Interactivity Test</title>
+    <script>
+        function testClick() {
+            document.getElementById('status').innerHTML = 'Button clicked! JavaScript is working.';
+            console.log('Button click test successful');
+        }
+        
+        function testInput() {
+            const value = document.getElementById('testInput').value;
+            document.getElementById('inputStatus').innerHTML = 'Input value: ' + value;
+        }
+        
+        window.onload = function() {
+            document.getElementById('status').innerHTML = 'Page loaded, JavaScript initialized';
+            console.log('Test page loaded successfully');
+        }
+    </script>
+</head>
+<body>
+    <h1>CMO App Interactivity Test</h1>
+    
+    <div id="status">Loading...</div>
+    
+    <p><button onclick="testClick()">Test Button Click</button></p>
+    
+    <p>
+        <input type="text" id="testInput" onkeyup="testInput()" placeholder="Type here">
+        <div id="inputStatus"></div>
+    </p>
+    
+    <h3>Environment Check:</h3>
+    <script>
+        document.write('<p>User Agent: ' + navigator.userAgent + '</p>');
+        document.write('<p>JavaScript: Enabled</p>');
+        document.write('<p>Local time: ' + new Date() + '</p>');
+    </script>
+</body>
+</html>

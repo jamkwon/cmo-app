@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CMO App Quick Test</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 800px; 
+            margin: 50px auto; 
+            padding: 20px; 
+            line-height: 1.6;
+        }
+        button { 
+            padding: 10px 20px; 
+            margin: 10px 5px; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer; 
+        }
+        .primary { background: #e55d4d; color: white; }
+        .secondary { background: #f0f0f0; color: #333; }
+        .result { 
+            margin: 20px 0; 
+            padding: 15px; 
+            border-radius: 5px; 
+            background: #f9f9f9; 
+            border-left: 4px solid #e55d4d;
+        }
+        .error { 
+            background: #ffebee; 
+            border-left-color: #f44336;
+        }
+        .success { 
+            background: #e8f5e8; 
+            border-left-color: #4caf50;
+        }
+        .form-group { 
+            margin: 15px 0; 
+        }
+        .form-group label { 
+            display: block; 
+            margin-bottom: 5px; 
+            font-weight: bold; 
+        }
+        .form-group input, .form-group select, .form-group textarea { 
+            width: 100%; 
+            padding: 8px; 
+            border: 1px solid #ddd; 
+            border-radius: 4px; 
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 CMO App Quick Test</h1>
+    <p>This page tests the CMO app API functionality directly without the React frontend complexity.</p>
+
+    <div id="status">
+        <h2>Server Status</h2>
+        <button class="primary" onclick="checkHealth()">Check Server Health</button>
+        <button class="secondary" onclick="loginAsAdmin()">Login as Admin</button>
+        <button class="secondary" onclick="getClients()">Get Clients</button>
+    </div>
+
+    <div id="meeting-test" style="margin-top: 30px;">
+        <h2>Meeting Creation Test</h2>
+        <div class="form-group">
+            <label>Client:</label>
+            <select id="clientSelect">
+                <option value="">Select a client...</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Date:</label>
+            <input type="date" id="meetingDate" />
+        </div>
+        <div class="form-group">
+            <label>Time:</label>
+            <input type="time" id="meetingTime" />
+        </div>
+        <div class="form-group">
+            <label>Notes:</label>
+            <textarea id="meetingNotes" rows="3" placeholder="Meeting notes..."></textarea>
+        </div>
+        <button class="primary" onclick="createMeeting()">Create Meeting</button>
+    </div>
+
+    <div id="client-test" style="margin-top: 30px;">
+        <h2>Client Creation Test</h2>
+        <div class="form-group">
+            <label>Company Name:</label>
+            <input type="text" id="clientName" placeholder="Company Name" />
+        </div>
+        <div class="form-group">
+            <label>Account Manager:</label>
+            <input type="text" id="clientAM" placeholder="Account Manager" />
+        </div>
+        <div class="form-group">
+            <label>Client Contact:</label>
+            <input type="text" id="clientContact" placeholder="Client Contact Name" />
+        </div>
+        <button class="primary" onclick="createClient()">Create Client</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        const API_BASE = 'http://localhost:3458';
+        let authToken = '';
+        let clients = [];
+
+        function showResult(message, type = 'result') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}:</strong> ${message}`;
+            results.appendChild(div);
+            results.scrollTop = results.scrollHeight;
+        }
+
+        async function checkHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                showResult(`✅ Server is healthy! Status: ${data.status}`, 'success');
+            } catch (error) {
+                showResult(`❌ Server check failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function loginAsAdmin() {
+            try {
+                const response = await fetch(`${API_BASE}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'admin@figmints.com',
+                        password: 'admin123'
+                    })
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    authToken = data.token;
+                    showResult(`✅ Logged in as: ${data.user.email} (${data.user.role})`, 'success');
+                } else {
+                    showResult(`❌ Login failed: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Login failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function getClients() {
+            if (!authToken) {
+                showResult('❌ Please login first', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/clients`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                if (response.ok) {
+                    clients = await response.json();
+                    showResult(`✅ Found ${clients.length} clients`, 'success');
+                    
+                    // Populate client dropdown
+                    const select = document.getElementById('clientSelect');
+                    select.innerHTML = '<option value="">Select a client...</option>';
+                    clients.forEach(client => {
+                        const option = document.createElement('option');
+                        option.value = client.id;
+                        option.textContent = client.name;
+                        select.appendChild(option);
+                    });
+                } else {
+                    const error = await response.json();
+                    showResult(`❌ Failed to get clients: ${error.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Failed to get clients: ${error.message}`, 'error');
+            }
+        }
+
+        async function createMeeting() {
+            if (!authToken) {
+                showResult('❌ Please login first', 'error');
+                return;
+            }
+
+            const clientId = document.getElementById('clientSelect').value;
+            const date = document.getElementById('meetingDate').value;
+            const time = document.getElementById('meetingTime').value;
+            const notes = document.getElementById('meetingNotes').value;
+
+            if (!clientId || !date || !time) {
+                showResult('❌ Please fill in client, date, and time', 'error');
+                return;
+            }
+
+            try {
+                const meetingDateTime = `${date}T${time}:00`;
+                const response = await fetch(`${API_BASE}/api/clients/${clientId}/meetings`, {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        meeting_date: meetingDateTime,
+                        notes: notes,
+                        status: 'draft'
+                    })
+                });
+                
+                if (response.ok) {
+                    const meeting = await response.json();
+                    const client = clients.find(c => c.id == clientId);
+                    showResult(`✅ Meeting created! ID: ${meeting.id} for ${client?.name} on ${date} at ${time}`, 'success');
+                    
+                    // Clear form
+                    document.getElementById('meetingDate').value = '';
+                    document.getElementById('meetingTime').value = '';
+                    document.getElementById('meetingNotes').value = '';
+                } else {
+                    const error = await response.json();
+                    showResult(`❌ Failed to create meeting: ${error.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Failed to create meeting: ${error.message}`, 'error');
+            }
+        }
+
+        async function createClient() {
+            if (!authToken) {
+                showResult('❌ Please login first', 'error');
+                return;
+            }
+
+            const name = document.getElementById('clientName').value;
+            const am = document.getElementById('clientAM').value;
+            const contact = document.getElementById('clientContact').value;
+
+            if (!name || !am) {
+                showResult('❌ Please fill in company name and account manager', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/clients`, {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: name,
+                        account_manager: am,
+                        client_name: contact,
+                        client_contact: contact ? `${contact.toLowerCase().replace(' ', '')}@${name.toLowerCase().replace(' ', '')}.com` : ''
+                    })
+                });
+                
+                if (response.ok) {
+                    const client = await response.json();
+                    showResult(`✅ Client created! ID: ${client.id} - ${client.name}`, 'success');
+                    
+                    // Clear form
+                    document.getElementById('clientName').value = '';
+                    document.getElementById('clientAM').value = '';
+                    document.getElementById('clientContact').value = '';
+                    
+                    // Refresh client list
+                    getClients();
+                } else {
+                    const error = await response.json();
+                    showResult(`❌ Failed to create client: ${error.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Failed to create client: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto-check health on page load
+        window.addEventListener('load', checkHealth);
+    </script>
+</body>
+</html>

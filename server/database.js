@@ -13,6 +13,26 @@ db.pragma('foreign_keys = ON');
 
 // Create tables
 const createTables = () => {
+  // Users table for authentication
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('admin', 'client')) DEFAULT 'client',
+      client_id INTEGER,
+      first_name TEXT,
+      last_name TEXT,
+      is_active BOOLEAN DEFAULT 1,
+      last_login DATETIME,
+      reset_token TEXT,
+      reset_token_expires DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
+    )
+  `);
+
   // Clients table
   db.exec(`
     CREATE TABLE IF NOT EXISTS clients (

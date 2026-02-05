@@ -4,12 +4,14 @@ import helmet from 'helmet';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import db from './database.js';
+import authRoutes from './authRoutes.js';
+import { authenticate, authorize, filterClientData, createDefaultAdmin } from './auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3456;
+const PORT = process.env.PORT || 3458; // Changed to 3458 to avoid conflicts
 
 // Middleware
 app.use(helmet());
@@ -20,12 +22,27 @@ app.use(express.urlencoded({ extended: true }));
 // Serve static files from the React app
 app.use(express.static(path.join(__dirname, '../client/dist')));
 
-// API Routes
+// Initialize default admin user
+createDefaultAdmin();
+
+// Authentication routes (no auth required)
+app.use('/api/auth', authRoutes);
+
+// API Routes (all protected with authentication)
 
 // Clients
-app.get('/api/clients', (req, res) => {
+app.get('/api/clients', authenticate, filterClientData, (req, res) => {
   try {
-    const clients = db.prepare('SELECT * FROM clients ORDER BY name').all();
+    let clients;
+    
+    if (req.user.role === 'admin') {
+      // Admins can see all clients
+      clients = db.prepare('SELECT * FROM clients ORDER BY name').all();
+    } else {
+      // Clients can only see their own data
+      clients = db.prepare('SELECT * FROM clients WHERE id = ? ORDER BY name').all(req.clientFilter);
+    }
+    
     res.json(clients);
   } catch (error) {
     console.error('Error fetching clients:', error);
@@ -33,7 +50,7 @@ app.get('/api/clients', (req, res) => {
   }
 });
 
-app.post('/api/clients', (req, res) => {
+app.post('/api/clients', authenticate, authorize('admin'), (req, res) => {
   try {
     const {
       name, url, address, client_name, client_contact, preferred_contact,
@@ -63,9 +80,16 @@ app.post('/api/clients', (req, res) => {
   }
 });
 
-app.get('/api/clients/:id', (req, res) => {
+app.get('/api/clients/:id', authenticate, filterClientData, (req, res) => {
   try {
-    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
+    const clientId = req.params.id;
+    
+    // Check access permissions
+    if (req.user.role === 'client' && parseInt(clientId) !== req.clientFilter) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(clientId);
     if (!client) {
       return res.status(404).json({ error: 'Client not found' });
     }
@@ -76,7 +100,7 @@ app.get('/api/clients/:id', (req, res) => {
   }
 });
 
-app.put('/api/clients/:id', (req, res) => {
+app.put('/api/clients/:id', authenticate, authorize('admin'), (req, res) => {
   try {
     const {
       name, url, address, client_name, client_contact, preferred_contact,
@@ -112,7 +136,7 @@ app.put('/api/clients/:id', (req, res) => {
   }
 });
 
-app.delete('/api/clients/:id', (req, res) => {
+app.delete('/api/clients/:id', authenticate, authorize('admin'), (req, res) => {
   try {
     const result = db.prepare('DELETE FROM clients WHERE id = ?').run(req.params.id);
     if (result.changes === 0) {
@@ -126,9 +150,16 @@ app.delete('/api/clients/:id', (req, res) => {
 });
 
 // Meetings
-app.get('/api/clients/:clientId/meetings', (req, res) => {
+app.get('/api/clients/:clientId/meetings', authenticate, filterClientData, (req, res) => {
   try {
-    const meetings = db.prepare('SELECT * FROM meetings WHERE client_id = ? ORDER BY meeting_date DESC').all(req.params.clientId);
+    const clientId = req.params.clientId;
+    
+    // Check access permissions
+    if (req.user.role === 'client' && parseInt(clientId) !== req.clientFilter) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const meetings = db.prepare('SELECT * FROM meetings WHERE client_id = ? ORDER BY meeting_date DESC').all(clientId);
     res.json(meetings);
   } catch (error) {
     console.error('Error fetching meetings:', error);
@@ -136,15 +167,22 @@ app.get('/api/clients/:clientId/meetings', (req, res) => {
   }
 });
 
-app.post('/api/clients/:clientId/meetings', (req, res) => {
+app.post('/api/clients/:clientId/meetings', authenticate, filterClientData, (req, res) => {
   try {
+    const clientId = req.params.clientId;
     const { meeting_date, status, notes } = req.body;
+    
+    // Check access permissions
+    if (req.user.role === 'client' && parseInt(clientId) !== req.clientFilter) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
     const stmt = db.prepare(`
       INSERT INTO meetings (client_id, meeting_date, status, notes)
       VALUES (?, ?, ?, ?)
     `);
     
-    const result = stmt.run(req.params.clientId, meeting_date, status || 'draft', notes);
+    const result = stmt.run(clientId, meeting_date, status || 'draft', notes);
     const meeting = db.prepare('SELECT * FROM meetings WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(meeting);
   } catch (error) {
@@ -153,12 +191,21 @@ app.post('/api/clients/:clientId/meetings', (req, res) => {
   }
 });
 
-app.get('/api/meetings/:id', (req, res) => {
+app.get('/api/meetings/:id', authenticate, filterClientData, (req, res) => {
   try {
-    const meeting = db.prepare('SELECT * FROM meetings WHERE id = ?').get(req.params.id);
+    const meetingId = req.params.id;
+    
+    // Get meeting with client info
+    const meeting = db.prepare('SELECT * FROM meetings WHERE id = ?').get(meetingId);
     if (!meeting) {
       return res.status(404).json({ error: 'Meeting not found' });
     }
+    
+    // Check access permissions
+    if (req.user.role === 'client' && meeting.client_id !== req.clientFilter) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
     res.json(meeting);
   } catch (error) {
     console.error('Error fetching meeting:', error);
@@ -166,9 +213,22 @@ app.get('/api/meetings/:id', (req, res) => {
   }
 });
 
-app.put('/api/meetings/:id', (req, res) => {
+app.put('/api/meetings/:id', authenticate, filterClientData, (req, res) => {
   try {
+    const meetingId = req.params.id;
     const { meeting_date, status, notes, meeting_score_avg } = req.body;
+    
+    // Get meeting to check ownership
+    const meeting = db.prepare('SELECT client_id FROM meetings WHERE id = ?').get(meetingId);
+    if (!meeting) {
+      return res.status(404).json({ error: 'Meeting not found' });
+    }
+    
+    // Check access permissions
+    if (req.user.role === 'client' && meeting.client_id !== req.clientFilter) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
     const stmt = db.prepare(`
       UPDATE meetings SET
         meeting_date = ?, status = ?, notes = ?, meeting_score_avg = ?,
@@ -176,13 +236,13 @@ app.put('/api/meetings/:id', (req, res) => {
       WHERE id = ?
     `);
     
-    const result = stmt.run(meeting_date, status, notes, meeting_score_avg, req.params.id);
+    const result = stmt.run(meeting_date, status, notes, meeting_score_avg, meetingId);
     if (result.changes === 0) {
       return res.status(404).json({ error: 'Meeting not found' });
     }
     
-    const meeting = db.prepare('SELECT * FROM meetings WHERE id = ?').get(req.params.id);
-    res.json(meeting);
+    const updatedMeeting = db.prepare('SELECT * FROM meetings WHERE id = ?').get(meetingId);
+    res.json(updatedMeeting);
   } catch (error) {
     console.error('Error updating meeting:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -190,9 +250,21 @@ app.put('/api/meetings/:id', (req, res) => {
 });
 
 // Big Wins
-app.get('/api/meetings/:meetingId/wins', (req, res) => {
+app.get('/api/meetings/:meetingId/wins', authenticate, filterClientData, (req, res) => {
   try {
-    const wins = db.prepare('SELECT * FROM big_wins WHERE meeting_id = ? ORDER BY created_at').all(req.params.meetingId);
+    const meetingId = req.params.meetingId;
+    
+    // Check meeting access
+    const meeting = db.prepare('SELECT client_id FROM meetings WHERE id = ?').get(meetingId);
+    if (!meeting) {
+      return res.status(404).json({ error: 'Meeting not found' });
+    }
+    
+    if (req.user.role === 'client' && meeting.client_id !== req.clientFilter) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const wins = db.prepare('SELECT * FROM big_wins WHERE meeting_id = ? ORDER BY created_at').all(meetingId);
     res.json(wins);
   } catch (error) {
     console.error('Error fetching big wins:', error);
@@ -200,11 +272,23 @@ app.get('/api/meetings/:meetingId/wins', (req, res) => {
   }
 });
 
-app.post('/api/meetings/:meetingId/wins', (req, res) => {
+app.post('/api/meetings/:meetingId/wins', authenticate, filterClientData, (req, res) => {
   try {
+    const meetingId = req.params.meetingId;
     const { title, description } = req.body;
+    
+    // Check meeting access
+    const meeting = db.prepare('SELECT client_id FROM meetings WHERE id = ?').get(meetingId);
+    if (!meeting) {
+      return res.status(404).json({ error: 'Meeting not found' });
+    }
+    
+    if (req.user.role === 'client' && meeting.client_id !== req.clientFilter) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
     const stmt = db.prepare('INSERT INTO big_wins (meeting_id, title, description) VALUES (?, ?, ?)');
-    const result = stmt.run(req.params.meetingId, title, description);
+    const result = stmt.run(meetingId, title, description);
     const win = db.prepare('SELECT * FROM big_wins WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(win);
   } catch (error) {
@@ -214,9 +298,16 @@ app.post('/api/meetings/:meetingId/wins', (req, res) => {
 });
 
 // Scorecard Items
-app.get('/api/clients/:clientId/scorecard-items', (req, res) => {
+app.get('/api/clients/:clientId/scorecard-items', authenticate, filterClientData, (req, res) => {
   try {
-    const items = db.prepare('SELECT * FROM scorecard_items WHERE client_id = ? ORDER BY name').all(req.params.clientId);
+    const clientId = req.params.clientId;
+    
+    // Check access permissions
+    if (req.user.role === 'client' && parseInt(clientId) !== req.clientFilter) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const items = db.prepare('SELECT * FROM scorecard_items WHERE client_id = ? ORDER BY name').all(clientId);
     res.json(items);
   } catch (error) {
     console.error('Error fetching scorecard items:', error);
@@ -224,14 +315,21 @@ app.get('/api/clients/:clientId/scorecard-items', (req, res) => {
   }
 });
 
-app.post('/api/clients/:clientId/scorecard-items', (req, res) => {
+app.post('/api/clients/:clientId/scorecard-items', authenticate, filterClientData, (req, res) => {
   try {
+    const clientId = req.params.clientId;
     const { name, goal_min, goal_max, current_value } = req.body;
+    
+    // Check access permissions
+    if (req.user.role === 'client' && parseInt(clientId) !== req.clientFilter) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
     const stmt = db.prepare(`
       INSERT INTO scorecard_items (client_id, name, goal_min, goal_max, current_value)
       VALUES (?, ?, ?, ?, ?)
     `);
-    const result = stmt.run(req.params.clientId, name, goal_min, goal_max, current_value);
+    const result = stmt.run(clientId, name, goal_min, goal_max, current_value);
     const item = db.prepare('SELECT * FROM scorecard_items WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(item);
   } catch (error) {
@@ -241,9 +339,16 @@ app.post('/api/clients/:clientId/scorecard-items', (req, res) => {
 });
 
 // Todos
-app.get('/api/clients/:clientId/todos', (req, res) => {
+app.get('/api/clients/:clientId/todos', authenticate, filterClientData, (req, res) => {
   try {
-    const todos = db.prepare('SELECT * FROM todos WHERE client_id = ? ORDER BY created_at DESC').all(req.params.clientId);
+    const clientId = req.params.clientId;
+    
+    // Check access permissions
+    if (req.user.role === 'client' && parseInt(clientId) !== req.clientFilter) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const todos = db.prepare('SELECT * FROM todos WHERE client_id = ? ORDER BY created_at DESC').all(clientId);
     res.json(todos);
   } catch (error) {
     console.error('Error fetching todos:', error);
@@ -251,14 +356,21 @@ app.get('/api/clients/:clientId/todos', (req, res) => {
   }
 });
 
-app.post('/api/clients/:clientId/todos', (req, res) => {
+app.post('/api/clients/:clientId/todos', authenticate, filterClientData, (req, res) => {
   try {
+    const clientId = req.params.clientId;
     const { title, description, assigned_to, due_date, meeting_id } = req.body;
+    
+    // Check access permissions
+    if (req.user.role === 'client' && parseInt(clientId) !== req.clientFilter) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
     const stmt = db.prepare(`
       INSERT INTO todos (client_id, meeting_id, title, description, assigned_to, due_date)
       VALUES (?, ?, ?, ?, ?, ?)
     `);
-    const result = stmt.run(req.params.clientId, meeting_id, title, description, assigned_to, due_date);
+    const result = stmt.run(clientId, meeting_id, title, description, assigned_to, due_date);
     const todo = db.prepare('SELECT * FROM todos WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(todo);
   } catch (error) {
@@ -267,9 +379,22 @@ app.post('/api/clients/:clientId/todos', (req, res) => {
   }
 });
 
-app.put('/api/todos/:id', (req, res) => {
+app.put('/api/todos/:id', authenticate, filterClientData, (req, res) => {
   try {
+    const todoId = req.params.id;
     const { title, description, assigned_to, status, due_date, notes } = req.body;
+    
+    // Get todo to check ownership
+    const todo = db.prepare('SELECT client_id FROM todos WHERE id = ?').get(todoId);
+    if (!todo) {
+      return res.status(404).json({ error: 'Todo not found' });
+    }
+    
+    // Check access permissions
+    if (req.user.role === 'client' && todo.client_id !== req.clientFilter) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
     const completed_at = status === 'complete' ? new Date().toISOString() : null;
     
     const stmt = db.prepare(`
@@ -279,13 +404,13 @@ app.put('/api/todos/:id', (req, res) => {
       WHERE id = ?
     `);
     
-    const result = stmt.run(title, description, assigned_to, status, due_date, notes, completed_at, req.params.id);
+    const result = stmt.run(title, description, assigned_to, status, due_date, notes, completed_at, todoId);
     if (result.changes === 0) {
       return res.status(404).json({ error: 'Todo not found' });
     }
     
-    const todo = db.prepare('SELECT * FROM todos WHERE id = ?').get(req.params.id);
-    res.json(todo);
+    const updatedTodo = db.prepare('SELECT * FROM todos WHERE id = ?').get(todoId);
+    res.json(updatedTodo);
   } catch (error) {
     console.error('Error updating todo:', error);
     res.status(500).json({ error: 'Internal server error' });
