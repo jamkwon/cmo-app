@@ -15,6 +15,11 @@ dist-ssr/
 build/
 *.local
 
+# Cloudflare Pages build outputs (generated during deployment)
+index.html
+assets/
+!client/dist/
+
 # Environment variables
 .env
 .env.*
