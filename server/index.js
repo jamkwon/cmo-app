@@ -11,7 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3458; // Changed to 3458 to avoid conflicts
+const PORT = process.env.PORT || 3461; // Changed to 3461 to avoid memory pressure conflicts
 
 // Middleware
 app.use(helmet());
@@ -417,6 +417,239 @@ app.put('/api/todos/:id', authenticate, filterClientData, (req, res) => {
   }
 });
 
+// Meeting Workflow API Endpoints
+
+// Get or create a meeting session for a specific date
+app.post('/api/meetings/session', authenticate, filterClientData, (req, res) => {
+  try {
+    const { client_id, meeting_date } = req.body;
+    
+    // Check if user has access to this client
+    if (req.user.role === 'client' && parseInt(client_id) !== req.clientFilter) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    // Try to find existing meeting for this date
+    let meeting = db.prepare('SELECT * FROM meetings WHERE client_id = ? AND meeting_date = ?')
+      .get(client_id, meeting_date);
+    
+    if (!meeting) {
+      // Create new meeting session
+      const result = db.prepare(`
+        INSERT INTO meetings (client_id, meeting_date, status)
+        VALUES (?, ?, 'in_progress')
+      `).run(client_id, meeting_date);
+      
+      meeting = db.prepare('SELECT * FROM meetings WHERE id = ?').get(result.lastInsertRowid);
+    }
+    
+    res.json(meeting);
+  } catch (error) {
+    console.error('Error creating/getting meeting session:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Save meeting data (comprehensive save for all sections)
+app.put('/api/meetings/:meetingId/data', authenticate, filterClientData, (req, res) => {
+  try {
+    const meetingId = req.params.meetingId;
+    const { 
+      bigWins, 
+      scorecard, 
+      todoRecap, 
+      campaigns, 
+      ids, 
+      headlines, 
+      newTodos, 
+      meetingScore 
+    } = req.body;
+    
+    // Begin transaction
+    const transaction = db.transaction(() => {
+      // Update meeting score
+      if (meetingScore > 0) {
+        db.prepare('UPDATE meetings SET meeting_score_avg = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+          .run(meetingScore, meetingId);
+      }
+      
+      // Save big wins
+      if (bigWins) {
+        // Clear existing and add new
+        db.prepare('DELETE FROM big_wins WHERE meeting_id = ?').run(meetingId);
+        if (bigWins.trim()) {
+          db.prepare('INSERT INTO big_wins (meeting_id, title, description) VALUES (?, ?, ?)')
+            .run(meetingId, 'Meeting Big Wins', bigWins);
+        }
+      }
+      
+      // Save scorecard data
+      if (scorecard && scorecard.length > 0) {
+        scorecard.forEach(metric => {
+          // Update or create scorecard item
+          const existing = db.prepare('SELECT id FROM scorecard_items WHERE client_id = (SELECT client_id FROM meetings WHERE id = ?) AND name = ?')
+            .get(meetingId, metric.name);
+          
+          let itemId;
+          if (existing) {
+            db.prepare('UPDATE scorecard_items SET goal_min = ?, current_value = ?, previous_value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+              .run(metric.goal, metric.current, metric.previous, existing.id);
+            itemId = existing.id;
+          } else {
+            const result = db.prepare('INSERT INTO scorecard_items (client_id, name, goal_min, current_value, previous_value) VALUES ((SELECT client_id FROM meetings WHERE id = ?), ?, ?, ?, ?)')
+              .run(meetingId, metric.name, metric.goal, metric.current, metric.previous);
+            itemId = result.lastInsertRowid;
+          }
+          
+          // Add scorecard entry for this meeting
+          db.prepare('DELETE FROM scorecard_entries WHERE scorecard_item_id = ? AND meeting_id = ?')
+            .run(itemId, meetingId);
+          db.prepare('INSERT INTO scorecard_entries (scorecard_item_id, meeting_id, value) VALUES (?, ?, ?)')
+            .run(itemId, meetingId, metric.current);
+        });
+      }
+      
+      // Save campaigns
+      if (campaigns && campaigns.length > 0) {
+        campaigns.forEach(campaign => {
+          const existing = db.prepare('SELECT id FROM campaign_updates WHERE client_id = (SELECT client_id FROM meetings WHERE id = ?) AND name = ?')
+            .get(meetingId, campaign.name);
+          
+          if (existing) {
+            db.prepare('UPDATE campaign_updates SET phase = ?, notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+              .run(campaign.status + ' - ' + campaign.progress, campaign.notes, existing.id);
+          } else {
+            db.prepare('INSERT INTO campaign_updates (client_id, name, phase, notes) VALUES ((SELECT client_id FROM meetings WHERE id = ?), ?, ?, ?)')
+              .run(meetingId, campaign.name, campaign.status + ' - ' + campaign.progress, campaign.notes);
+          }
+        });
+      }
+      
+      // Save IDS items
+      if (ids) {
+        if (ids.identify) {
+          db.prepare('INSERT OR REPLACE INTO ids_items (meeting_id, type, title, description, status) VALUES (?, ?, ?, ?, ?)')
+            .run(meetingId, 'issue', 'Identified Items', ids.identify, 'identified');
+        }
+        if (ids.discuss) {
+          db.prepare('INSERT OR REPLACE INTO ids_items (meeting_id, type, title, description, status) VALUES (?, ?, ?, ?, ?)')
+            .run(meetingId, 'discussion', 'Discussion Items', ids.discuss, 'discussed');
+        }
+        if (ids.solve) {
+          db.prepare('INSERT OR REPLACE INTO ids_items (meeting_id, type, title, description, status) VALUES (?, ?, ?, ?, ?)')
+            .run(meetingId, 'solution', 'Solutions', ids.solve, 'solved');
+        }
+      }
+      
+      // Save new todos
+      if (newTodos && newTodos.length > 0) {
+        newTodos.forEach(todo => {
+          db.prepare('INSERT INTO todos (client_id, meeting_id, title, assigned_to, status) VALUES ((SELECT client_id FROM meetings WHERE id = ?), ?, ?, ?, ?)')
+            .run(meetingId, meetingId, todo.item, 'us', 'pending');
+        });
+      }
+    });
+    
+    transaction();
+    res.json({ success: true, message: 'Meeting data saved successfully' });
+    
+  } catch (error) {
+    console.error('Error saving meeting data:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get meeting data for a specific meeting
+app.get('/api/meetings/:meetingId/data', authenticate, filterClientData, (req, res) => {
+  try {
+    const meetingId = req.params.meetingId;
+    
+    // Get meeting info
+    const meeting = db.prepare('SELECT * FROM meetings WHERE id = ?').get(meetingId);
+    if (!meeting) {
+      return res.status(404).json({ error: 'Meeting not found' });
+    }
+    
+    // Check access
+    if (req.user.role === 'client' && meeting.client_id !== req.clientFilter) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    // Get big wins
+    const bigWins = db.prepare('SELECT * FROM big_wins WHERE meeting_id = ?').all(meetingId);
+    
+    // Get scorecard data
+    const scorecard = db.prepare(`
+      SELECT si.*, se.value as meeting_value 
+      FROM scorecard_items si 
+      LEFT JOIN scorecard_entries se ON si.id = se.scorecard_item_id AND se.meeting_id = ?
+      WHERE si.client_id = ?
+    `).all(meetingId, meeting.client_id);
+    
+    // Get campaigns
+    const campaigns = db.prepare('SELECT * FROM campaign_updates WHERE client_id = ?').all(meeting.client_id);
+    
+    // Get IDS items
+    const idsItems = db.prepare('SELECT * FROM ids_items WHERE meeting_id = ?').all(meetingId);
+    
+    // Get todos from this meeting
+    const newTodos = db.prepare('SELECT * FROM todos WHERE meeting_id = ? AND status = "pending"').all(meetingId);
+    
+    // Get previous todos for recap
+    const todoRecap = db.prepare('SELECT * FROM todos WHERE client_id = ? AND meeting_id != ? ORDER BY created_at DESC LIMIT 10').all(meeting.client_id, meetingId);
+    
+    res.json({
+      meeting,
+      bigWins: bigWins.length > 0 ? bigWins[0].description : '',
+      scorecard: scorecard.map(item => ({
+        id: item.id,
+        name: item.name,
+        goal: item.goal_min,
+        current: item.meeting_value || item.current_value,
+        previous: item.previous_value,
+        trend: calculateTrend(item.meeting_value || item.current_value, item.previous_value)
+      })),
+      campaigns: campaigns.map(camp => ({
+        id: camp.id,
+        name: camp.name,
+        status: camp.phase?.split(' - ')[0] || 'active',
+        progress: camp.phase?.split(' - ')[1] || '',
+        notes: camp.notes
+      })),
+      ids: {
+        identify: idsItems.find(item => item.type === 'issue')?.description || '',
+        discuss: idsItems.find(item => item.type === 'discussion')?.description || '',
+        solve: idsItems.find(item => item.type === 'solution')?.description || ''
+      },
+      todoRecap: todoRecap.map(todo => ({
+        id: todo.id,
+        item: todo.title,
+        status: todo.status,
+        notes: todo.notes || ''
+      })),
+      newTodos: newTodos.map(todo => ({
+        id: todo.id,
+        item: todo.title
+      })),
+      meetingScore: meeting.meeting_score_avg || 0
+    });
+    
+  } catch (error) {
+    console.error('Error getting meeting data:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Helper function for trend calculation
+function calculateTrend(current, previous) {
+  if (!previous || !current) return 'neutral';
+  const curr = parseFloat(current);
+  const prev = parseFloat(previous);
+  if (curr > prev) return 'up';
+  if (curr < prev) return 'down';
+  return 'neutral';
+}
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
@@ -428,9 +661,10 @@ app.get('*', (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`CMO Server running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
+  console.log(`External access: http://192.168.86.36:${PORT}/health`);
 });
 
 export default app;

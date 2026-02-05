@@ -1,5 +1,5 @@
 // API Configuration
-export const API_BASE_URL = import.meta.env.PROD ? '' : 'http://localhost:3458';
+export const API_BASE_URL = import.meta.env.PROD ? '' : 'http://192.168.86.36:3461';
 
 // Helper function for API calls
 export const apiCall = async (endpoint, options = {}) => {
