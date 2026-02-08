@@ -20,6 +20,7 @@ import {
 import ClientSelector from './components/ClientSelector';
 import SaveIndicator from './components/SaveIndicator';
 import ExportModal from './components/ExportModal';
+import { ToastContainer } from './components/Toast';
 import { DataService } from './utils/dataService';
 import ValidationService from './utils/validation';
 
@@ -55,6 +56,7 @@ const MeetingWorkflowApp = () => {
   const [validation, setValidation] = useState({ isValid: true, errors: {}, warnings: [] });
   const [showExportModal, setShowExportModal] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [toasts, setToasts] = useState([]);
 
   // Auto-save interval and validation
   useEffect(() => {
@@ -67,6 +69,48 @@ const MeetingWorkflowApp = () => {
       return () => clearInterval(interval);
     }
   }, [selectedClientId, currentMeeting, meetingData]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl+S or Cmd+S to save
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (currentMeeting && !isLoading) {
+          saveAllData();
+        }
+      }
+      
+      // Ctrl+Tab or Cmd+Tab to cycle through tabs
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Tab') {
+        e.preventDefault();
+        const currentIndex = tabs.findIndex(tab => tab.id === activeTab);
+        const nextIndex = (currentIndex + 1) % tabs.length;
+        setActiveTab(tabs[nextIndex].id);
+      }
+
+      // Escape to close modals
+      if (e.key === 'Escape') {
+        if (showExportModal) {
+          setShowExportModal(false);
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab, tabs, currentMeeting, isLoading, showExportModal]);
+
+  // Toast management
+  const addToast = (message, type = 'info', duration = 3000) => {
+    const id = Date.now() + Math.random();
+    const toast = { id, message, type, duration };
+    setToasts(prev => [...prev, toast]);
+  };
+
+  const removeToast = (id) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+  };
 
   // Validate data when it changes
   useEffect(() => {
@@ -223,6 +267,7 @@ const MeetingWorkflowApp = () => {
           setHasUnsavedChanges(false);
           if (!silent) {
             setSaveStatus('saved');
+            addToast('Meeting data saved successfully!', 'success');
             setTimeout(() => setSaveStatus(''), 3000);
           } else {
             setSaveStatus('auto-saved');
@@ -252,6 +297,7 @@ const MeetingWorkflowApp = () => {
       
       if (!silent) {
         setSaveStatus('saved');
+        addToast('Data saved locally (offline mode)', 'warning');
         setTimeout(() => setSaveStatus(''), 3000);
       }
     } finally {
@@ -333,16 +379,25 @@ const MeetingWorkflowApp = () => {
   // Component for Big Wins Section
   const BigWinsSection = () => (
     <div className="space-y-4">
-      <h2 className="text-2xl font-bold text-gray-900">Big Wins</h2>
-      <p className="text-gray-600">Capture client wins from the past period</p>
-      <textarea
-        value={meetingData.bigWins}
-        onChange={(e) => setMeetingData({...meetingData, bigWins: e.target.value})}
-        placeholder="What big wins has the client achieved since our last meeting?"
-        className="w-full h-40 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-      />
-      <div className="text-sm text-gray-500">
-        Example: "Launched new product line", "Hit quarterly revenue goal", "Hired key team member"
+      <div>
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Big Wins</h2>
+        <p className="text-gray-600">Capture client wins from the past period</p>
+      </div>
+      <div>
+        <label htmlFor="big-wins-textarea" className="sr-only">
+          Big wins achieved since last meeting
+        </label>
+        <textarea
+          id="big-wins-textarea"
+          value={meetingData.bigWins}
+          onChange={(e) => setMeetingData({...meetingData, bigWins: e.target.value})}
+          placeholder="What big wins has the client achieved since our last meeting?"
+          className="w-full h-32 sm:h-40 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none transition-shadow"
+          aria-describedby="big-wins-help"
+        />
+        <div id="big-wins-help" className="text-sm text-gray-500 mt-2">
+          Example: "Launched new product line", "Hit quarterly revenue goal", "Hired key team member"
+        </div>
       </div>
     </div>
   );
@@ -979,17 +1034,19 @@ const MeetingWorkflowApp = () => {
       {/* Header */}
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-6xl mx-auto px-4 py-4">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
             <div className="flex items-center space-x-4">
               <button
                 onClick={handleStartOver}
-                className="flex items-center text-gray-600 hover:text-gray-800"
+                className="flex items-center text-gray-600 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 rounded p-1"
+                aria-label="Change client and start new meeting"
               >
                 <ChevronLeftIcon className="h-5 w-5 mr-1" />
-                Change Client
+                <span className="hidden sm:inline">Change Client</span>
+                <span className="sm:hidden">Back</span>
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
                   <span className="text-blue-600">FIGMINTS</span> Client Meeting
                 </h1>
                 <p className="text-gray-600 text-sm">
@@ -997,7 +1054,13 @@ const MeetingWorkflowApp = () => {
                 </p>
               </div>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center justify-between sm:justify-end space-x-2 sm:space-x-4">
+              {/* Keyboard shortcut hint */}
+              <div className="hidden lg:flex items-center text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded">
+                <kbd className="bg-white px-1 rounded shadow text-gray-700">Ctrl+S</kbd>
+                <span className="ml-1">to save</span>
+              </div>
+              
               <SaveIndicator 
                 status={saveStatus} 
                 lastSaved={lastSaved} 
@@ -1005,7 +1068,8 @@ const MeetingWorkflowApp = () => {
               />
               <button
                 onClick={() => setShowExportModal(true)}
-                className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 font-medium"
+                className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 rounded px-2 py-1"
+                aria-label="Export meeting data"
               >
                 <ShareIcon className="h-4 w-4" />
                 <span className="hidden sm:inline">Export</span>
@@ -1013,7 +1077,8 @@ const MeetingWorkflowApp = () => {
               <button
                 onClick={() => saveAllData()}
                 disabled={isLoading || !currentMeeting}
-                className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center space-x-2 bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                aria-label={isLoading ? "Saving meeting data" : "Save meeting data"}
               >
                 {isLoading ? (
                   <ArrowPathIcon className="h-4 w-4 animate-spin" />
@@ -1046,9 +1111,41 @@ const MeetingWorkflowApp = () => {
 
       <div className="max-w-6xl mx-auto px-4 py-6">
         <div className="flex flex-col lg:flex-row gap-6">
-          {/* Navigation Tabs */}
-          <div className="lg:w-64 flex-shrink-0">
-            <nav className="space-y-1">
+          {/* Mobile Tab Navigation */}
+          <div className="lg:hidden">
+            <select
+              value={activeTab}
+              onChange={(e) => setActiveTab(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-lg bg-white text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              aria-label="Navigate between meeting sections"
+            >
+              {tabs.map((tab) => {
+                const hasContent = (() => {
+                  switch(tab.id) {
+                    case 'bigwins': return !!meetingData.bigWins;
+                    case 'scorecard': return meetingData.scorecard.length > 0;
+                    case 'todorecap': return meetingData.todoRecap.length > 0;
+                    case 'campaigns': return meetingData.campaigns.length > 0;
+                    case 'ids': return !!(meetingData.ids.identify || meetingData.ids.discuss || meetingData.ids.solve);
+                    case 'headlines': return !!(meetingData.headlines.nextMeetingDate || meetingData.headlines.teamUpdates);
+                    case 'newtodos': return meetingData.newTodos.length > 0;
+                    case 'score': return meetingData.meetingScore > 0;
+                    default: return false;
+                  }
+                })();
+                
+                return (
+                  <option key={tab.id} value={tab.id}>
+                    {hasContent ? '✓ ' : ''}{tab.name}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {/* Desktop Navigation Tabs */}
+          <div className="hidden lg:block lg:w-64 flex-shrink-0">
+            <nav className="space-y-1" role="tablist" aria-label="Meeting workflow sections">
               {tabs.map((tab) => {
                 const IconComponent = tab.icon;
                 const hasContent = (() => {
@@ -1069,7 +1166,11 @@ const MeetingWorkflowApp = () => {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
+                    role="tab"
+                    aria-selected={activeTab === tab.id}
+                    aria-controls={`panel-${tab.id}`}
+                    id={`tab-${tab.id}`}
+                    className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
                       activeTab === tab.id
                         ? 'bg-blue-100 text-blue-700 border-l-4 border-blue-600'
                         : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
@@ -1078,7 +1179,10 @@ const MeetingWorkflowApp = () => {
                     <IconComponent className={`mr-3 h-5 w-5 ${tab.color}`} />
                     <span className="flex-1 text-left">{tab.name}</span>
                     {hasContent && (
-                      <CheckCircleIcon className="h-4 w-4 text-green-600" />
+                      <CheckCircleIcon 
+                        className="h-4 w-4 text-green-600" 
+                        aria-label="Section completed"
+                      />
                     )}
                   </button>
                 );
@@ -1102,8 +1206,29 @@ const MeetingWorkflowApp = () => {
 
           {/* Main Content */}
           <div className="flex-1">
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              {renderContent()}
+            <div 
+              className="bg-white rounded-lg shadow-sm border p-6"
+              role="tabpanel"
+              id={`panel-${activeTab}`}
+              aria-labelledby={`tab-${activeTab}`}
+              tabIndex={0}
+            >
+              {isLoading ? (
+                <div className="animate-pulse space-y-6">
+                  <div className="space-y-4">
+                    <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+                    <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+                    <div className="h-32 bg-gray-200 rounded"></div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="h-4 bg-gray-200 rounded"></div>
+                    <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+                    <div className="h-4 bg-gray-200 rounded w-4/6"></div>
+                  </div>
+                </div>
+              ) : (
+                renderContent()
+              )}
             </div>
           </div>
         </div>
@@ -1117,6 +1242,9 @@ const MeetingWorkflowApp = () => {
         clientName={selectedClient?.name || 'Unknown Client'}
         meetingDate={currentMeeting?.meeting_date || new Date().toISOString().split('T')[0]}
       />
+
+      {/* Toast Notifications */}
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
     </div>
   );
 };
